@@ -1,204 +1,95 @@
-# bot.py
-import os
-import re
-import logging
-from datetime import datetime
-from io import BytesIO
-from typing import Dict, List, Optional
+# PDF-бот  
+*Проект для автоматической обработки PDF-документов и экспорта данных в Excel*  
+Ссылка на бот @GPRenewal_bot
 
-from telegram import Update, ForceReply
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-from pdfplumber import open as pdf_open
-import pandas as pd
-import pytesseract
-from PIL import Image
-import io
 
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+---
 
-# Токен вашего бота
-BOT_TOKEN = "7945896025:AAGnPOIU5C5DMl6YtfVgbIzScR-n12vcaIw"
+## **Описание проекта**  
+Telegram-бот, который извлекает ключевые данные из PDF-документов (ИНН, наименование юридического лица, дату подписания, исходящий номер) и формирует таблицу в формате Excel.  
 
-# Регулярные выражения для извлечения данных
-INN_PATTERN = r'(?:ИНН\s*)?(\d{10}|\d{12})'
-DATE_PATTERN = r'«(\d{1,2})»\s+([А-Яа-я]+)\s+(\d{4})'
-LEGAL_NAME_PATTERN = r'(ООО|АО|ПАО)\s+["«]?([А-Я][а-яА-ЯёЁ\-\s]+)[»"]?'
-OUTGOING_NUMBER_PATTERN = r'(?:Исх\.?\s*(?:№|N)?\s*)([\w\d\-/]+)\s+(?:от|from)'
+### **Цель**  
+Автоматизировать обработку гарантийных писем и других официальных документов, сократить время на ручное копирование данных и минимизировать ошибки.  
 
-class PDFProcessor:
-    @staticmethod
-    def extract_text(pdf_path: str) -> str:
-        """Извлекает текст из PDF-файла"""
-        try:
-            with pdf_open(pdf_path) as pdf:
-                text = ""
-                for page in pdf.pages:
-                    text += page.extract_text() or ""
-                return text
-        except Exception as e:
-            logging.error(f"Ошибка извлечения текста из PDF: {e}")
-            try:
-                img = Image.open(pdf_path)
-                text = pytesseract.image_to_string(img, lang='rus')
-                return text
+---
 
-            except Exception as e:
-                logging.error(f"Ошибка OCR: {e}")
-                return ""
+## **Функционал**  
 
-    @staticmethod
-    def extract_data(text: str) -> Dict[str, Optional[str]]:
-        """Извлекает данные из текста"""
-        # Извлечение ИНН
-        inn_match = re.search(INN_PATTERN, text)
-        inn = inn_match.group(1) if inn_match else None
+| Функция                  | Описание                                                                 |
+|--------------------------|-------------------------------------------------------------------------|
+| **Извлечение данных**    | Поиск ИНН, юрлица, даты подписания и исходящего номера через регулярные выражения. |
+| **Поддержка PDF-файлов** | Обработка как текстовых PDF, так и сканированных документов (с OCR через Tesseract). |
+| **Интеграция с Telegram**| Загрузка файлов через Telegram, мгновенная обработка и отправка Excel-таблицы. |
+| **Экспорт в Excel**      | Сохранение данных в таблицу с автоматическим обновлением при добавлении новых файлов. |
+| **Ограничения**          | Максимальное количество обрабатываемых файлов — 20 за сессию.             |
 
-        # Извлечение даты подписания
-        date_match = re.search(DATE_PATTERN, text)
-        date = None
-        if date_match:
-            try:
-                day = date_match.group(1)
-                month_name = date_match.group(2).lower()
-                year = date_match.group(3)
-                
-                month_map = {
-                    'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04',
-                    'мая': '05', 'июня': '06', 'июля': '07', 'августа': '08',
-                    'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12'
-                }
-                
-                if month_name in month_map:
-                    month = month_map[month_name]
-                    date_str = f"{day.zfill(2)}.{month}.{year}"
-                    date = datetime.strptime(date_str, '%d.%m.%Y').strftime('%d.%m.%Y')
-            except (ValueError, KeyError):
-                pass
+---
 
-        # Извлечение названия юрлица
-        legal_name_match = re.search(LEGAL_NAME_PATTERN, text)
-        legal_name = legal_name_match.group(2) if legal_name_match else None
+## **Используемые технологии**  
 
-        # Извлечение исходящего номера
-        outgoing_match = re.search(OUTGOING_NUMBER_PATTERN, text)
-        outgoing_number = outgoing_match.group(1) if outgoing_match else None
+| Сервис / Библиотека      | Назначение                                                                 |
+|--------------------------|-------------------------------------------------------------------------|
+| **Python**               | Основной язык программирования.                                           |
+| **Telegram Bot API**     | Интеграция с Telegram для приема файлов и отправки результатов.           |
+| **pdfplumber**           | Извлечение текста из PDF-документов.                                      |
+| **pytesseract**          | OCR для сканированных PDF (требуется установка Tesseract OCR).            |
+| **pandas + openpyxl**    | Создание и форматирование Excel-таблиц.                                   |
+| **Qwen**                 | Генерация кода и оптимизация регулярных выражений.                        |
 
-        return {
-            'inn': inn,
-            'date': date,
-            'legal_name': legal_name,
-            'outgoing_number': outgoing_number
-        }
+---
 
-class ExcelExporter:
-    @staticmethod
-    def create_excel(data: List[Dict]) -> BytesIO:
-        """Создает Excel-файл из данных"""
-        df = pd.DataFrame(data)
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False)
-        output.seek(0)
-        return output
+## **Пример работы бота**  
 
-class TelegramBot:
-    def __init__(self):
-        self.processor = PDFProcessor()
-        self.exporter = ExcelExporter()
-        self.processed_files = []
+### **1. Загрузка файла**  
+Пользователь отправляет PDF-документ:  
+```text  
+Гарантийное письмо  
+От ООО "Рога и Копыта", ИНН 7701234567  
+Исх. № 123-ГП от 15 января 2024 г.  
+```  
 
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Обработчик команды /start"""
-        user = update.effective_user
-        await update.message.reply_html(
-            rf"Привет, {user.mention_html()}! Отправьте мне PDF-файлы с гарантийными письмами.",
-            reply_markup=ForceReply(selective=True),
-        )
+### **2. Извлеченные данные**  
+| Поле              | Значение              |  
+|-------------------|-----------------------|  
+| ИНН               | 7701234567            |  
+| Юрлицо            | ООО "Рога и Копыта"    |  
+| Дата подписания   | 15.01.2024            |  
+| Исходящий номер    | 123-ГП                |  
 
-    async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Обработчик загрузки документов"""
-        document = update.message.document
+### **3. Excel-таблица**  
+```csv  
+filename,inn,legal_name,date,outgoing_number  
+document.pdf,7701234567,"ООО Рога и Копыта",15.01.2024,123-ГП  
+```  
 
-        if not document.file_name.lower().endswith('.pdf'):
-            await update.message.reply_text("Пожалуйста, загрузите файл в формате PDF")
-            return
+---
 
-        # Ограничение на количество файлов (до 20)
-        if len(self.processed_files) >= 20:
-            await update.message.reply_text("Максимальное количество файлов - 20")
-            return
+## **Команды бота**  
 
-        try:
-            # Скачиваем файл
-            file = await document.get_file()
-            file_path = f"downloads/{document.file_id}.pdf"
+| Команда        | Описание                          |  
+|----------------|-----------------------------------|  
+| `/start`       | Приветственное сообщение.         |  
+| `/clear`       | Очистка накопленных данных.       |  
+| `/send`        | Отправка Excel-файла с результатами. |  
 
-            os.makedirs("downloads", exist_ok=True)
-            await file.download_to_drive(file_path)
+---
 
-            # Извлекаем текст
-            text = self.processor.extract_text(file_path)
+## **Преимущества проекта**  
+- **Автоматизация**: обработка 20 файлов за 1 минуту.  
+- **Точность**: извлечение данных с помощью регулярных выражений и OCR.  
+- **Удобство**: интеграция с Telegram и мгновенный экспорт в Excel.  
 
-            # Извлекаем данные
-            data = self.processor.extract_data(text)
-            data['filename'] = document.file_name
+---
 
-            # Сохраняем результат и сразу создаем Excel
-            self.processed_files.append(data)
+## **Вывод**  
+PDF-бот упрощает работу с официальными документами, экономя время сотрудников и минимизируя ошибки. Его можно адаптировать для других задач: извлечение реквизитов из счетов, обработка резюме и т.д.  
 
-            # Создаем и отправляем Excel файл после каждой обработки
-            excel_file = self.exporter.create_excel(self.processed_files)
-            await update.message.reply_document(
-                document=excel_file,
-                filename="garanty_letters_data.xlsx",
-                caption=f"Данные из гарантийных писем (обработано файлов: {len(self.processed_files)})"
-            )
-            await update.message.reply_text(f"Файл {document.file_name} обработан и добавлен в Excel")
+### **Контакты для связи**  
+- Telegram: [@your_bot_username](https://t.me/your_bot_username)  
+- Email: example@email.com  
 
-        except Exception as e:
-            logging.error(f"Ошибка обработки файла: {e}")
-            await update.message.reply_text("Произошла ошибка при обработке файла")
+---
 
-    async def send_excel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Отправляет Excel-файл с результатами"""
-        if not self.processed_files:
-            await update.message.reply_text("Нет обработанных файлов для экспорта")
-            return
-
-        try:
-            excel_file = self.exporter.create_excel(self.processed_files)
-            await update.message.reply_document(
-                document=excel_file,
-                filename="garanty_letters_data.xlsx",
-                caption="Данные из гарантийных писем"
-            )
-            self.processed_files.clear()
-        except Exception as e:
-            logging.error(f"Ошибка создания Excel-файла: {e}")
-            await update.message.reply_text("Произошла ошибка при создании Excel-файла")
-
-    async def clear_data(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Очищает накопленные данные"""
-        self.processed_files.clear()
-        await update.message.reply_text("Накопленные данные очищены")
-
-    def run(self):
-        """Запуск бота"""
-        application = Application.builder().token(BOT_TOKEN).build()
-
-        # Регистрация обработчиков
-        application.add_handler(CommandHandler("start", self.start))
-        application.add_handler(CommandHandler("clear", self.clear_data))
-        application.add_handler(MessageHandler(filters.Document.ALL, self.handle_document))
-        application.add_handler(CommandHandler("send", self.send_excel))
-
-        # Запуск бота
-        application.run_polling()
-
-if __name__ == "__main__":
-    bot = TelegramBot()
-    bot.run()# PDF_bot
+## **Дополнительные материалы**  
+- [Документация Telegram Bot API](https://core.telegram.org/bots/api)  
+- [Официальный сайт Tesseract OCR](https://tesseract-ocr.github.io/)
