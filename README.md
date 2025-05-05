@@ -1,9 +1,8 @@
 # PDF-бот  
 *Проект для автоматической обработки PDF-документов и экспорта данных в Excel*  
 Ссылка на бот @GPRenewal_bot
- [скриншоты](https://github.com/SunnyS8/PDF_bot/blob/main/%D0%A1%D0%BA%D1%80%D0%B8%D0%BD%D1%88%D0%BE%D1%82-05-05-2025%2018_59_00.jpg)
-
-
+ [скриншот бота](https://github.com/SunnyS8/PDF_bot/blob/main/%D0%A1%D0%BA%D1%80%D0%B8%D0%BD%D1%88%D0%BE%D1%82-05-05-2025%2018_59_00.jpg)
+[скриншот таблицы Excel](https://github.com/SunnyS8/PDF_bot/blob/main/%D0%A1%D0%BA%D1%80%D0%B8%D0%BD%D1%88%D0%BE%D1%82-05-05-2025%2019_08_59.jpg)
 ---
 
 ## **Описание проекта**  
